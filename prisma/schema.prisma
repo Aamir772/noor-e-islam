@@ -1,0 +1,727 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum LanguageCode {
+  AR
+  HI
+  UR
+  EN
+  UR_RO
+}
+
+enum TextDirection {
+  RTL
+  LTR
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum ContentType {
+  AYAH
+  HADITH
+  DUA
+  TEACHING
+  ARTICLE
+  CONCEPT
+  MYTH_FACT
+  PROPHET_STORY
+}
+
+enum ContentStatus {
+  DRAFT
+  TRANSLATED
+  REFERENCED
+  REVIEWED
+  APPROVED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum TextVariantType {
+  SOURCE
+  TRANSLATION
+  TRANSLITERATION
+}
+
+enum ReviewStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum ReferenceType {
+  QURAN
+  HADITH
+  DUA
+  TOPIC
+  OTHER
+}
+
+enum ExplanationType {
+  SCHOLARLY
+  EDITORIAL
+}
+
+enum AuditAction {
+  CREATED
+  MODIFIED
+  TRANSLATED
+  REFERENCED
+  REVIEWED
+  APPROVED
+  PUBLISHED
+  ARCHIVED
+  CORRECTION
+}
+
+enum CorrectionStatus {
+  OPEN
+  ASSIGNED
+  IN_REVIEW
+  RESOLVED
+  REJECTED
+}
+
+enum CorrectionCategory {
+  REFERENCE
+  TRANSLATION
+  TEXT_ERROR
+  GRADING
+  LICENSING
+  OTHER
+}
+
+enum DonationStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+model User {
+  id                    String                @id @default(uuid()) @db.Uuid
+  email                 String                @unique
+  name                  String?
+  passwordHash          String?
+  emailVerifiedAt       DateTime?             @db.Timestamptz(6)
+  isActive              Boolean               @default(true)
+  isSuspended           Boolean               @default(false)
+  createdAt             DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime              @updatedAt @db.Timestamptz(6)
+  roles                 UserRole[]            @relation("UserRoles")
+  assignedRoles         UserRole[]            @relation("AssignedRoles")
+  createdContent        ContentItem[]         @relation("ContentCreator")
+  createdTextVariants   TextVariant[]         @relation("TextVariantCreator")
+  translatedVariants    TextVariant[]         @relation("TextVariantTranslator")
+  reviewedTranslations  Translation[]         @relation("TranslationReviewer")
+  reviewedExplanations  Explanation[]         @relation("ExplanationReviewer")
+  reviewedOpinions      ScholarlyOpinion[]    @relation("OpinionReviewer")
+  reviews               ReviewAudit[]         @relation("ReviewActor")
+  translatedRecords     Translation[]         @relation("TranslationTranslator")
+  createdVersions       ContentVersion[]      @relation("VersionCreator")
+  submittedCorrections  CorrectionSubmission[] @relation("CorrectionSubmitter")
+  assignedCorrections   CorrectionSubmission[] @relation("CorrectionReviewer")
+  uploadedAssets        MediaAsset[]          @relation("MediaUploader")
+  preferences           UserPreference[]
+  bookmarks             Bookmark[]
+  readingLists          ReadingList[]
+  readingProgress       ReadingProgress[]
+  favoriteDuas          FavoriteDua[]
+  donations             Donation[]            @relation("Donor")
+  sessions              SessionAudit[]        @relation("UserSessions")
+  adminLogs             AdminAuditLog[]       @relation("AdminActor")
+
+  @@index([isActive, isSuspended])
+  @@map("users")
+}
+
+model Role {
+  id          String          @id @default(uuid()) @db.Uuid
+  name        String          @unique
+  description String?
+  createdAt   DateTime        @default(now()) @db.Timestamptz(6)
+  users       UserRole[]      @relation("RoleUsers")
+  permissions RolePermission[] @relation("RolePermissions")
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String          @id @default(uuid()) @db.Uuid
+  key         String          @unique
+  description String?
+  roles       RolePermission[] @relation("PermissionRoles")
+
+  @@map("permissions")
+}
+
+model UserRole {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  roleId       String   @db.Uuid
+  assignedById String?  @db.Uuid
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  expiresAt    DateTime? @db.Timestamptz(6)
+  revokedAt    DateTime? @db.Timestamptz(6)
+  user         User     @relation("UserRoles", fields: [userId], references: [id], onDelete: Cascade)
+  role         Role     @relation("RoleUsers", fields: [roleId], references: [id], onDelete: Restrict)
+  assignedBy   User?    @relation("AssignedRoles", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@unique([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  id           String     @id @default(uuid()) @db.Uuid
+  roleId       String     @db.Uuid
+  permissionId String     @db.Uuid
+  role         Role       @relation("RolePermissions", fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation("PermissionRoles", fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model Language {
+  id              String           @id @default(uuid()) @db.Uuid
+  code            LanguageCode     @unique
+  name            String
+  nativeName      String
+  direction       TextDirection
+  isInterface     Boolean          @default(false)
+  isContent       Boolean          @default(true)
+  textVariants    TextVariant[]    @relation("VariantLanguage")
+  translations    Translation[]    @relation("TranslationLanguage")
+  transliterations Transliteration[] @relation("TransliterationLanguage")
+  explanations    Explanation[]    @relation("ExplanationLanguage")
+  preferences     UserPreference[] @relation("PreferenceLanguage")
+  searchDocuments SearchDocument[] @relation("SearchLanguage")
+
+  @@map("languages")
+}
+
+model License {
+  id                  String        @id @default(uuid()) @db.Uuid
+  name                String
+  holder              String
+  licenseType         String
+  attributionRequired Boolean       @default(false)
+  attributionText     String?       @db.Text
+  usagePermissions    String?       @db.Text
+  documentationUrl    String?
+  verified            Boolean       @default(false)
+  createdAt           DateTime      @default(now()) @db.Timestamptz(6)
+  sources             Source[]      @relation("SourceLicense")
+  textVariants        TextVariant[] @relation("VariantLicense")
+  mediaAssets         MediaAsset[]  @relation("MediaLicense")
+
+  @@unique([name, holder])
+  @@index([verified])
+  @@map("licenses")
+}
+
+model Source {
+  id                 String            @id @default(uuid()) @db.Uuid
+  name               String
+  authorOrInstitution String?
+  publisher          String?
+  edition            String?
+  licenseId          String?           @db.Uuid
+  sourceUrl          String?
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  notes              String?           @db.Text
+  createdAt          DateTime          @default(now()) @db.Timestamptz(6)
+  license            License?          @relation("SourceLicense", fields: [licenseId], references: [id], onDelete: SetNull)
+  references         Reference[]       @relation("SourceReferences")
+  textVariants       TextVariant[]     @relation("VariantSource")
+  scholarlyOpinions  ScholarlyOpinion[] @relation("OpinionSource")
+
+  @@unique([name, edition])
+  @@index([verificationStatus])
+  @@map("sources")
+}
+
+model ContentItem {
+  id                  String              @id @default(uuid()) @db.Uuid
+  type                ContentType
+  slug                String              @unique
+  status              ContentStatus       @default(DRAFT)
+  isDemo              Boolean             @default(false)
+  canonicalTextImmutable Boolean          @default(false)
+  createdById         String?             @db.Uuid
+  publishedAt         DateTime?           @db.Timestamptz(6)
+  archivedAt          DateTime?           @db.Timestamptz(6)
+  createdAt           DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime            @updatedAt @db.Timestamptz(6)
+  creator             User?               @relation("ContentCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  textVariants        TextVariant[]       @relation("VariantContent")
+  references          Reference[]         @relation("ContentReferences")
+  explanations        Explanation[]
+  scholarlyOpinions   ScholarlyOpinion[]
+  topics              ContentTopic[]
+  tags                ContentTag[]
+  versions            ContentVersion[]
+  reviews             ReviewAudit[]
+  corrections         CorrectionSubmission[]
+  searchDocuments     SearchDocument[]
+  bookmarks           Bookmark[]
+  readingLists        ReadingListItem[]
+  readingProgress     ReadingProgress[]
+  favoriteDuas        FavoriteDua[]
+
+  @@index([type, status])
+  @@index([isDemo, status])
+  @@index([publishedAt])
+  @@map("content_items")
+}
+
+model TextVariant {
+  id           String           @id @default(uuid()) @db.Uuid
+  contentItemId String          @db.Uuid
+  languageId   String           @db.Uuid
+  sourceId     String?          @db.Uuid
+  licenseId    String?          @db.Uuid
+  variantType  TextVariantType
+  edition      String?
+  text         String           @db.Text
+  isCanonical  Boolean          @default(false)
+  translatorId String?          @db.Uuid
+  createdById  String?          @db.Uuid
+  reviewStatus ReviewStatus     @default(DRAFT)
+  createdAt    DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime         @updatedAt @db.Timestamptz(6)
+  contentItem  ContentItem      @relation("VariantContent", fields: [contentItemId], references: [id], onDelete: Restrict)
+  language     Language         @relation("VariantLanguage", fields: [languageId], references: [id], onDelete: Restrict)
+  source       Source?          @relation("VariantSource", fields: [sourceId], references: [id], onDelete: Restrict)
+  license      License?         @relation("VariantLicense", fields: [licenseId], references: [id], onDelete: SetNull)
+  translator   User?            @relation("TextVariantTranslator", fields: [translatorId], references: [id], onDelete: SetNull)
+  creator      User?            @relation("TextVariantCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  translation  Translation?
+  transliterations Transliteration[]
+  versions     ContentVersion[] @relation("VersionVariant")
+  referenceLinks ReferenceTextVariant[]
+
+  @@unique([contentItemId, languageId, sourceId, edition, variantType])
+  @@index([contentItemId, languageId, variantType])
+  @@index([reviewStatus])
+  @@map("text_variants")
+}
+
+model Translation {
+  id           String   @id @default(uuid()) @db.Uuid
+  textVariantId String  @unique @db.Uuid
+  languageId   String   @db.Uuid
+  translatorId String?  @db.Uuid
+  reviewerId   String?  @db.Uuid
+  methodology  String?  @db.Text
+  notes        String?  @db.Text
+  reviewedAt   DateTime? @db.Timestamptz(6)
+  textVariant  TextVariant @relation(fields: [textVariantId], references: [id], onDelete: Restrict)
+  language     Language @relation("TranslationLanguage", fields: [languageId], references: [id], onDelete: Restrict)
+  translator   User?    @relation("TranslationTranslator", fields: [translatorId], references: [id], onDelete: SetNull)
+  reviewer     User?    @relation("TranslationReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([languageId])
+  @@map("translations")
+}
+
+model Transliteration {
+  id            String      @id @default(uuid()) @db.Uuid
+  textVariantId String      @db.Uuid
+  languageId    String      @db.Uuid
+  scheme        String
+  notes         String?     @db.Text
+  textVariant   TextVariant @relation(fields: [textVariantId], references: [id], onDelete: Restrict)
+  language      Language    @relation("TransliterationLanguage", fields: [languageId], references: [id], onDelete: Restrict)
+
+  @@unique([textVariantId, scheme])
+  @@map("transliterations")
+}
+
+model Reference {
+  id                   String                @id @default(uuid()) @db.Uuid
+  contentItemId        String                @db.Uuid
+  sourceId             String                @db.Uuid
+  referenceType        ReferenceType
+  book                 String?
+  chapter              String?
+  verseStart           Int?
+  verseEnd             Int?
+  hadithNumberStart    Int?
+  hadithNumberEnd      Int?
+  volume               String?
+  page                 String?
+  sourceSnapshot       String?
+  notes                String?               @db.Text
+  url                  String?
+  contentItem          ContentItem           @relation("ContentReferences", fields: [contentItemId], references: [id], onDelete: Restrict)
+  source               Source                @relation("SourceReferences", fields: [sourceId], references: [id], onDelete: Restrict)
+  gradings             HadithGrading[]
+  textVariantLinks     ReferenceTextVariant[]
+
+  @@index([contentItemId, referenceType])
+  @@index([sourceId])
+  @@map("references")
+}
+
+model ReferenceTextVariant {
+  id            String      @id @default(uuid()) @db.Uuid
+  referenceId   String      @db.Uuid
+  textVariantId String      @db.Uuid
+  reference     Reference   @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+  textVariant   TextVariant @relation(fields: [textVariantId], references: [id], onDelete: Cascade)
+
+  @@unique([referenceId, textVariantId])
+  @@map("reference_text_variants")
+}
+
+model HadithGrading {
+  id            String    @id @default(uuid()) @db.Uuid
+  referenceId   String    @db.Uuid
+  grade         String
+  grader        String
+  gradingSource String
+  edition       String
+  notes         String?   @db.Text
+  verified      Boolean   @default(false)
+  reference     Reference @relation(fields: [referenceId], references: [id], onDelete: Restrict)
+
+  @@index([referenceId, verified])
+  @@map("hadith_gradings")
+}
+
+model Explanation {
+  id           String          @id @default(uuid()) @db.Uuid
+  contentItemId String         @db.Uuid
+  languageId   String          @db.Uuid
+  body         String          @db.Text
+  type         ExplanationType @default(EDITORIAL)
+  reviewerId   String?         @db.Uuid
+  reviewStatus ReviewStatus    @default(DRAFT)
+  createdAt    DateTime        @default(now()) @db.Timestamptz(6)
+  contentItem  ContentItem     @relation(fields: [contentItemId], references: [id], onDelete: Restrict)
+  language     Language        @relation("ExplanationLanguage", fields: [languageId], references: [id], onDelete: Restrict)
+  reviewer     User?           @relation("ExplanationReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([contentItemId, languageId])
+  @@map("explanations")
+}
+
+model ScholarlyOpinion {
+  id                  String       @id @default(uuid()) @db.Uuid
+  contentItemId       String       @db.Uuid
+  sourceId            String?      @db.Uuid
+  scholarName         String
+  workTitle           String?
+  opinion             String       @db.Text
+  differsFromConsensus Boolean     @default(false)
+  reviewerId          String?      @db.Uuid
+  reviewStatus        ReviewStatus @default(DRAFT)
+  referenceUrl        String?
+  contentItem         ContentItem  @relation(fields: [contentItemId], references: [id], onDelete: Restrict)
+  source              Source?      @relation("OpinionSource", fields: [sourceId], references: [id], onDelete: SetNull)
+  reviewer            User?        @relation("OpinionReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([contentItemId, reviewStatus])
+  @@map("scholarly_opinions")
+}
+
+model Topic {
+  id        String        @id @default(uuid()) @db.Uuid
+  slug      String        @unique
+  name      String
+  parentId  String?       @db.Uuid
+  parent    Topic?        @relation("TopicHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Topic[]       @relation("TopicHierarchy")
+  content   ContentTopic[]
+
+  @@index([parentId])
+  @@map("topics")
+}
+
+model Tag {
+  id      String      @id @default(uuid()) @db.Uuid
+  name    String      @unique
+  content ContentTag[]
+
+  @@map("tags")
+}
+
+model ContentTopic {
+  id            String      @id @default(uuid()) @db.Uuid
+  contentItemId String      @db.Uuid
+  topicId       String      @db.Uuid
+  contentItem   ContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  topic         Topic       @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([contentItemId, topicId])
+  @@map("content_topics")
+}
+
+model ContentTag {
+  id            String      @id @default(uuid()) @db.Uuid
+  contentItemId String      @db.Uuid
+  tagId         String      @db.Uuid
+  contentItem   ContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  tag           Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([contentItemId, tagId])
+  @@map("content_tags")
+}
+
+model MediaAsset {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  fileName              String
+  storagePath           String                 @unique
+  mimeType              String
+  sizeBytes             Int
+  altText               String?
+  licenseId             String?                @db.Uuid
+  uploadedById          String?                @db.Uuid
+  createdAt             DateTime               @default(now()) @db.Timestamptz(6)
+  license               License?               @relation("MediaLicense", fields: [licenseId], references: [id], onDelete: SetNull)
+  uploadedBy            User?                  @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  correctionAttachments CorrectionSubmission[] @relation("CorrectionAttachment")
+
+  @@index([mimeType])
+  @@map("media_assets")
+}
+
+model ReviewAudit {
+  id           String        @id @default(uuid()) @db.Uuid
+  contentItemId String       @db.Uuid
+  action       AuditAction
+  fromStatus   ContentStatus?
+  toStatus     ContentStatus?
+  actorId      String        @db.Uuid
+  actorRoleSnapshot String
+  notes        String?       @db.Text
+  evidenceUrl  String?
+  createdAt    DateTime      @default(now()) @db.Timestamptz(6)
+  contentItem  ContentItem   @relation(fields: [contentItemId], references: [id], onDelete: Restrict)
+  actor        User          @relation("ReviewActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([contentItemId, createdAt])
+  @@map("review_audits")
+}
+
+model ContentVersion {
+  id            String       @id @default(uuid()) @db.Uuid
+  contentItemId String       @db.Uuid
+  versionNumber Int
+  status        ContentStatus
+  snapshot      Json?
+  textVariantId String?      @db.Uuid
+  createdById   String?      @db.Uuid
+  isCurrent     Boolean      @default(false)
+  createdAt     DateTime     @default(now()) @db.Timestamptz(6)
+  contentItem   ContentItem  @relation(fields: [contentItemId], references: [id], onDelete: Restrict)
+  textVariant   TextVariant? @relation("VersionVariant", fields: [textVariantId], references: [id], onDelete: SetNull)
+  creator       User?        @relation("VersionCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([contentItemId, versionNumber])
+  @@index([contentItemId, isCurrent])
+  @@map("content_versions")
+}
+
+model CorrectionSubmission {
+  id                 String            @id @default(uuid()) @db.Uuid
+  contentItemId      String            @db.Uuid
+  submitterId        String?           @db.Uuid
+  category           CorrectionCategory
+  description        String            @db.Text
+  supportingReference String?          @db.Text
+  evidenceUrl        String?
+  attachmentAssetId  String?           @db.Uuid
+  status             CorrectionStatus  @default(OPEN)
+  assignedReviewerId String?           @db.Uuid
+  resolutionNotes    String?           @db.Text
+  createdAt          DateTime          @default(now()) @db.Timestamptz(6)
+  resolvedAt         DateTime?         @db.Timestamptz(6)
+  contentItem        ContentItem       @relation(fields: [contentItemId], references: [id], onDelete: Restrict)
+  submitter          User?             @relation("CorrectionSubmitter", fields: [submitterId], references: [id], onDelete: SetNull)
+  assignedReviewer   User?             @relation("CorrectionReviewer", fields: [assignedReviewerId], references: [id], onDelete: SetNull)
+  attachment         MediaAsset?       @relation("CorrectionAttachment", fields: [attachmentAssetId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@map("correction_submissions")
+}
+
+model Bookmark {
+  id            String      @id @default(uuid()) @db.Uuid
+  userId        String      @db.Uuid
+  contentItemId String      @db.Uuid
+  createdAt     DateTime    @default(now()) @db.Timestamptz(6)
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contentItem   ContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contentItemId])
+  @@map("bookmarks")
+}
+
+model ReadingList {
+  id          String            @id @default(uuid()) @db.Uuid
+  userId      String            @db.Uuid
+  name        String
+  description String?
+  createdAt   DateTime          @default(now()) @db.Timestamptz(6)
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items       ReadingListItem[]
+
+  @@unique([userId, name])
+  @@map("reading_lists")
+}
+
+model ReadingListItem {
+  id            String      @id @default(uuid()) @db.Uuid
+  readingListId String      @db.Uuid
+  contentItemId String      @db.Uuid
+  addedAt       DateTime    @default(now()) @db.Timestamptz(6)
+  readingList   ReadingList @relation(fields: [readingListId], references: [id], onDelete: Cascade)
+  contentItem   ContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+
+  @@unique([readingListId, contentItemId])
+  @@map("reading_list_items")
+}
+
+model ReadingProgress {
+  id              String      @id @default(uuid()) @db.Uuid
+  userId          String      @db.Uuid
+  contentItemId   String      @db.Uuid
+  progressPercent Int         @default(0)
+  lastPosition    String?
+  updatedAt       DateTime    @updatedAt @db.Timestamptz(6)
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contentItem     ContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contentItemId])
+  @@map("reading_progress")
+}
+
+model UserPreference {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  languageId String   @db.Uuid
+  isDefault  Boolean  @default(false)
+  theme      String   @default("system")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  language   Language @relation("PreferenceLanguage", fields: [languageId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, languageId])
+  @@map("user_preferences")
+}
+
+model FavoriteDua {
+  id            String      @id @default(uuid()) @db.Uuid
+  userId        String      @db.Uuid
+  contentItemId String      @db.Uuid
+  createdAt     DateTime    @default(now()) @db.Timestamptz(6)
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contentItem   ContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contentItemId])
+  @@map("favorite_duas")
+}
+
+model Donation {
+  id                String          @id @default(uuid()) @db.Uuid
+  donorUserId       String?         @db.Uuid
+  amountCents       Int
+  currency          String
+  status            DonationStatus  @default(PENDING)
+  provider          String
+  providerReference String          @unique
+  createdAt         DateTime        @default(now()) @db.Timestamptz(6)
+  donor             User?           @relation("Donor", fields: [donorUserId], references: [id], onDelete: SetNull)
+  events            DonationEvent[]
+
+  @@index([status, createdAt])
+  @@map("donations")
+}
+
+model DonationEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  donationId       String   @db.Uuid
+  eventType        String
+  providerEventId  String   @unique
+  payload          Json?
+  signatureVerified Boolean  @default(false)
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+  donation         Donation @relation(fields: [donationId], references: [id], onDelete: Restrict)
+
+  @@index([donationId, createdAt])
+  @@map("donation_events")
+}
+
+model SessionAudit {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @db.Uuid
+  action          String
+  ipHash          String?
+  userAgentHash   String?
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  user            User     @relation("UserSessions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("session_audits")
+}
+
+model AdminAuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String   @db.Uuid
+  action     String
+  targetType String
+  targetId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  actor      User     @relation("AdminActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([actorId, createdAt])
+  @@map("admin_audit_logs")
+}
+
+model SearchDocument {
+  id              String   @id @default(uuid()) @db.Uuid
+  contentItemId   String   @db.Uuid
+  languageId      String   @db.Uuid
+  normalizedTitle String
+  normalizedBody  String   @db.Text
+  aliases         String?  @db.Text
+  searchVector    Unsupported("tsvector")?
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+  contentItem     ContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  language        Language    @relation("SearchLanguage", fields: [languageId], references: [id], onDelete: Restrict)
+
+  @@unique([contentItemId, languageId])
+  @@index([languageId])
+  @@index([searchVector], type: Gin)
+  @@index([normalizedTitle(ops: raw("gin_trgm_ops"))], type: Gin, map: "search_documents_title_trgm_idx")
+  @@index([normalizedBody(ops: raw("gin_trgm_ops"))], type: Gin, map: "search_documents_body_trgm_idx")
+  @@map("search_documents")
+}
+
+model RateLimitCounter {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique
+  windowStart DateTime @db.Timestamptz(6)
+  count       Int      @default(1)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([windowStart])
+  @@map("rate_limit_counters")
+}

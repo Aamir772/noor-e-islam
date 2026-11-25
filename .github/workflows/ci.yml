@@ -1,0 +1,76 @@
+name: ci
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - name: Generate disposable CI credentials
+        run: |
+          CI_PASSWORD="$(openssl rand -hex 24)"
+          CI_AUTH_SECRET="$(openssl rand -hex 48)"
+          echo "::add-mask::$CI_PASSWORD"
+          echo "::add-mask::$CI_AUTH_SECRET"
+          {
+            echo "POSTGRES_USER=noor_ci"
+            echo "POSTGRES_PASSWORD=$CI_PASSWORD"
+            echo "POSTGRES_DB=noor_test"
+            echo "SHADOW_POSTGRES_DB=noor_shadow"
+            echo "DATABASE_URL=postgresql://noor_ci:${CI_PASSWORD}@127.0.0.1:5432/noor_test?schema=public"
+            echo "SHADOW_DATABASE_URL=postgresql://noor_ci:${CI_PASSWORD}@127.0.0.1:5433/noor_shadow?schema=public"
+            echo "AUTH_SECRET=$CI_AUTH_SECRET"
+            echo "AUTH_TRUST_HOST=true"
+            echo "TRUST_PROXY=false"
+            echo "NEXT_PUBLIC_APP_URL=https://noor-ci.test"
+            echo "CSRF_ALLOWED_ORIGINS=https://noor-ci.test"
+            echo "RATE_LIMIT_BACKEND=postgres"
+          } >> "$GITHUB_ENV"
+      - name: Start disposable PostgreSQL services
+        run: |
+          docker run -d --name noor-ci-postgres \
+            -e POSTGRES_USER="$POSTGRES_USER" \
+            -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+            -e POSTGRES_DB="$POSTGRES_DB" \
+            -p 5432:5432 \
+            postgres:18-alpine
+          docker run -d --name noor-ci-postgres-shadow \
+            -e POSTGRES_USER="$POSTGRES_USER" \
+            -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+            -e POSTGRES_DB="$SHADOW_POSTGRES_DB" \
+            -p 5433:5432 \
+            postgres:18-alpine
+          for attempt in $(seq 1 60); do
+            if docker exec noor-ci-postgres pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1 &&
+              docker exec noor-ci-postgres-shadow pg_isready -U "$POSTGRES_USER" -d "$SHADOW_POSTGRES_DB" >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs noor-ci-postgres
+          docker logs noor-ci-postgres-shadow
+          exit 1
+      - run: npm ci
+      - run: npm run prisma:validate
+      - run: npm run prisma:generate
+      - run: npm run prisma:migrate:deploy
+      - run: npm run prisma:seed
+      - run: npm run db:verify
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Stop disposable PostgreSQL services
+        if: always()
+        run: docker rm -f noor-ci-postgres noor-ci-postgres-shadow >/dev/null 2>&1 || true

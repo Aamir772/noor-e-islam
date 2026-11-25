@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="Noor-e-Islam">
+  <rect width="1200" height="630" fill="#F8F6EF"/>
+  <rect x="64" y="64" width="1072" height="502" rx="32" fill="#123C32"/>
+  <circle cx="210" cy="315" r="92" fill="none" stroke="#C6A45A" stroke-width="10"/>
+  <path d="M210 223 246 291l76-10-32 68 55 54-76 17-5 77-53-51-53 51-5-77-76-17 55-54-32-68 76 10 36-68Z" fill="none" stroke="#F8F6EF" stroke-width="8" stroke-linejoin="round"/>
+  <text x="350" y="300" fill="#F8F6EF" font-family="Geist, sans-serif" font-size="84" font-weight="600">Noor-e-Islam</text>
+  <text x="350" y="370" fill="#C6A45A" font-family="Geist, sans-serif" font-size="34" font-weight="500">Islamic knowledge with clear sources</text>
+</svg>
